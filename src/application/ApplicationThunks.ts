@@ -291,7 +291,7 @@ export const handleSharedDashboardsThunk = () => (dispatch: any) => {
         if (skipConfirmation === true) {
           dispatch(onConfirmLoadSharedDashboardThunk());
         }
-        window.history.pushState({}, document.title, window.location.pathname);
+        // window.history.pushState({}, document.title, window.location.pathname);
       } else {
         dispatch(setConnectionModalOpen(false));
         // dispatch(setWelcomeScreenOpen(false));
@@ -310,7 +310,7 @@ export const handleSharedDashboardsThunk = () => (dispatch: any) => {
             false
           )
         );
-        window.history.pushState({}, document.title, window.location.pathname);
+        // window.history.pushState({}, document.title, window.location.pathname);
       }
     } else {
       // dispatch(resetShareDetails());
