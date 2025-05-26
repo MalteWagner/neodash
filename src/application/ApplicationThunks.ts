@@ -436,7 +436,7 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     if (pageParam !== '' && pageParam !== null) {
       if (!isNaN(pageParam)) {
         pageFromUrl = parseInt(pageParam);
-        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+        // dispatch(setPageToLoadAfterConnecting(pageFromUrl)); // Temporarily commented out
       }
     }
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
