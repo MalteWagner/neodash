@@ -377,6 +377,7 @@ export const onConfirmLoadSharedDashboardThunk = () => (dispatch: any, getState:
  * Note: this does not work in Neo4j Desktop, so we revert to defaults.
  */
 export const loadApplicationConfigThunk = () => async (dispatch: any, getState: any) => {
+  let pageFromUrl = null;
   let config = {
     ssoEnabled: false,
     ssoProviders: [],
@@ -424,10 +425,10 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
       }
     });
     sessionStorage.getItem('SSO_PARAMS_BEFORE_REDIRECT');
-    const page = urlParams.get('page');
-    if (page !== '' && page !== null) {
-      if (!isNaN(page)) {
-        dispatch(setPageNumberThunk(parseInt(page)));
+    const pageParam = urlParams.get('page');
+    if (pageParam !== '' && pageParam !== null) {
+      if (!isNaN(pageParam)) {
+        pageFromUrl = parseInt(pageParam);
       }
     }
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
@@ -564,9 +565,9 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     }
 
     if (standalone) {
-      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting));
+      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting, pageFromUrl));
     } else {
-      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting));
+      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting, pageFromUrl));
     }
   } catch (e) {
     console.log(e);
@@ -581,9 +582,10 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
 };
 
 // Set up NeoDash to run in editor mode.
-export const initializeApplicationAsEditorThunk = (_, paramsToSetAfterConnecting) => (dispatch: any) => {
-  const clearNotificationAfterLoad = true;
-  dispatch(clearDesktopConnectionProperties());
+export const initializeApplicationAsEditorThunk =
+  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any) => {
+    const clearNotificationAfterLoad = true;
+    dispatch(clearDesktopConnectionProperties());
   dispatch(setDatabaseFromNeo4jDesktopIntegrationThunk());
   const old = localStorage.getItem('neodash-dashboard');
   dispatch(setOldDashboard(old));
@@ -609,11 +611,14 @@ export const initializeApplicationAsEditorThunk = (_, paramsToSetAfterConnecting
   dispatch(handleSharedDashboardsThunk());
   dispatch(setReportHelpModalOpen(false));
   dispatch(setAboutModalOpen(false));
+  if (pageFromUrl !== null) {
+    dispatch(setPageNumberThunk(pageFromUrl));
+  }
 };
 
 // Set up NeoDash to run in standalone mode.
 export const initializeApplicationAsStandaloneThunk =
-  (config, paramsToSetAfterConnecting) => (dispatch: any, getState: any) => {
+  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any, getState: any) => {
     const clearNotificationAfterLoad = true;
     const state = getState();
     // If we are running in standalone mode, auto-set the connection details that are configured.
@@ -659,4 +664,7 @@ export const initializeApplicationAsStandaloneThunk =
       dispatch(setConnectionModalOpen(true));
     }
     dispatch(handleSharedDashboardsThunk());
+    if (pageFromUrl !== null) {
+      dispatch(setPageNumberThunk(pageFromUrl));
+    }
   };
