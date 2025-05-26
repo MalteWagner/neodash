@@ -230,6 +230,12 @@ export const setParametersToLoadAfterConnecting = (parameters: any) => ({
   payload: { parameters },
 });
 
+export const SET_PAGE_TO_LOAD_AFTER_CONNECTING = 'APPLICATION/SET_PAGE_TO_LOAD_AFTER_CONNECTING';
+export const setPageToLoadAfterConnecting = (pageNumber) => ({
+  type: SET_PAGE_TO_LOAD_AFTER_CONNECTING,
+  payload: { pageNumber },
+});
+
 export const SET_CUSTOM_HEADER = 'APPLICATION/SET_CUSTOM_HEADER';
 export const setCustomHeader = (customHeader: any) => ({
   type: SET_CUSTOM_HEADER,

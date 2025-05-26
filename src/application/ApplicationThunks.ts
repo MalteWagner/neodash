@@ -158,6 +158,13 @@ export const createConnectionThunk =
             }
             dispatch(setDashboardToLoadAfterConnecting(null));
           }
+
+          // After dashboard loading, check if there's a page number to load
+          const { application: appStateAfterDashboardLoad } = getState();
+          if (appStateAfterDashboardLoad.pageToLoadAfterConnecting !== null) {
+            dispatch(setPageNumberThunk(appStateAfterDashboardLoad.pageToLoadAfterConnecting));
+            dispatch(setPageToLoadAfterConnecting(null)); // Reset it after applying
+          }
         } else {
           dispatch(createNotificationThunk('Unknown Connection Error', 'Check the browser console.'));
         }
@@ -429,6 +436,7 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     if (pageParam !== '' && pageParam !== null) {
       if (!isNaN(pageParam)) {
         pageFromUrl = parseInt(pageParam);
+        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
       }
     }
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
@@ -565,9 +573,9 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     }
 
     if (standalone) {
-      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting, pageFromUrl));
+      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting));
     } else {
-      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting, pageFromUrl));
+      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting));
     }
   } catch (e) {
     console.log(e);
@@ -583,7 +591,7 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
 
 // Set up NeoDash to run in editor mode.
 export const initializeApplicationAsEditorThunk =
-  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any) => {
+  (config, paramsToSetAfterConnecting) => (dispatch: any) => {
     const clearNotificationAfterLoad = true;
     dispatch(clearDesktopConnectionProperties());
   dispatch(setDatabaseFromNeo4jDesktopIntegrationThunk());
@@ -611,14 +619,11 @@ export const initializeApplicationAsEditorThunk =
   dispatch(handleSharedDashboardsThunk());
   dispatch(setReportHelpModalOpen(false));
   dispatch(setAboutModalOpen(false));
-  if (pageFromUrl !== null) {
-    dispatch(setPageNumberThunk(pageFromUrl));
-  }
 };
 
 // Set up NeoDash to run in standalone mode.
 export const initializeApplicationAsStandaloneThunk =
-  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any, getState: any) => {
+  (config, paramsToSetAfterConnecting) => (dispatch: any, getState: any) => {
     const clearNotificationAfterLoad = true;
     const state = getState();
     // If we are running in standalone mode, auto-set the connection details that are configured.
@@ -664,7 +669,4 @@ export const initializeApplicationAsStandaloneThunk =
       dispatch(setConnectionModalOpen(true));
     }
     dispatch(handleSharedDashboardsThunk());
-    if (pageFromUrl !== null) {
-      dispatch(setPageNumberThunk(pageFromUrl));
-    }
   };

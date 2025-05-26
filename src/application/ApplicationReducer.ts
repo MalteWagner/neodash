@@ -39,6 +39,7 @@ import {
   SET_WAIT_FOR_SSO,
   SET_WELCOME_SCREEN_OPEN,
   SET_CUSTOM_HEADER,
+  SET_PAGE_TO_LOAD_AFTER_CONNECTING,
 } from './ApplicationActions';
 import {
   SET_LOGGING_MODE,
@@ -71,6 +72,7 @@ const initialState = {
   dashboardToLoadAfterConnecting: null,
   waitForSSO: false,
   standalone: false,
+  pageToLoadAfterConnecting: null,
   logging: LOGGING_INITIAL_STATE,
 };
 export const applicationReducer = (state = initialState, action: { type: any; payload: any }) => {
@@ -321,6 +323,12 @@ export const applicationReducer = (state = initialState, action: { type: any; pa
       const { customHeader } = payload;
       state = update(state, { customHeader: customHeader });
       return state;
+    }
+    case SET_PAGE_TO_LOAD_AFTER_CONNECTING: {
+      return {
+        ...state,
+        pageToLoadAfterConnecting: payload.pageNumber,
+      };
     }
     default: {
       return state;
