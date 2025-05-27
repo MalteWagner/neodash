@@ -436,7 +436,6 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     if (pageParam !== '' && pageParam !== null) {
       if (!isNaN(pageParam)) {
         pageFromUrl = parseInt(pageParam);
-        // dispatch(setPageToLoadAfterConnecting(pageFromUrl)); // Temporarily commented out
       }
     }
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
@@ -570,6 +569,10 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
         paramsToStore[key] = value;
       });
       sessionStorage.setItem('SSO_PARAMS_BEFORE_REDIRECT', JSON.stringify(paramsToStore));
+    }
+
+    if (pageFromUrl !== null) {
+      dispatch(setPageToLoadAfterConnecting(pageFromUrl));
     }
 
     if (standalone) {
