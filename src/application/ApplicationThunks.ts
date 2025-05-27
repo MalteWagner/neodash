@@ -436,6 +436,7 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     if (pageParam !== '' && pageParam !== null) {
       if (!isNaN(pageParam)) {
         pageFromUrl = parseInt(pageParam);
+        // dispatch(setPageToLoadAfterConnecting(pageFromUrl)); // Ensure this is NOT active
       }
     }
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
@@ -571,14 +572,10 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
       sessionStorage.setItem('SSO_PARAMS_BEFORE_REDIRECT', JSON.stringify(paramsToStore));
     }
 
-    if (pageFromUrl !== null) {
-      dispatch(setPageToLoadAfterConnecting(pageFromUrl));
-    }
-
     if (standalone) {
-      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting));
+      dispatch(initializeApplicationAsStandaloneThunk(config, paramsToSetAfterConnecting, pageFromUrl));
     } else {
-      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting));
+      dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting, pageFromUrl));
     }
   } catch (e) {
     console.log(e);
@@ -594,7 +591,7 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
 
 // Set up NeoDash to run in editor mode.
 export const initializeApplicationAsEditorThunk =
-  (config, paramsToSetAfterConnecting) => (dispatch: any) => {
+  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any) => {
     const clearNotificationAfterLoad = true;
     dispatch(clearDesktopConnectionProperties());
   dispatch(setDatabaseFromNeo4jDesktopIntegrationThunk());
@@ -603,6 +600,9 @@ export const initializeApplicationAsEditorThunk =
   dispatch(setConnected(false));
   dispatch(setDashboardToLoadAfterConnecting(null));
   dispatch(updateGlobalParametersThunk(paramsToSetAfterConnecting));
+  if (pageFromUrl !== null) {
+    dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+  }
   // TODO: this logic around loading/saving/upgrading/migrating dashboards needs a cleanup
   if (Object.keys(paramsToSetAfterConnecting).length > 0) {
     dispatch(setParametersToLoadAfterConnecting(null));
@@ -626,7 +626,7 @@ export const initializeApplicationAsEditorThunk =
 
 // Set up NeoDash to run in standalone mode.
 export const initializeApplicationAsStandaloneThunk =
-  (config, paramsToSetAfterConnecting) => (dispatch: any, getState: any) => {
+  (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any, getState: any) => {
     const clearNotificationAfterLoad = true;
     const state = getState();
     // If we are running in standalone mode, auto-set the connection details that are configured.
@@ -658,6 +658,9 @@ export const initializeApplicationAsStandaloneThunk =
 
     // Override for when username and password are specified in the config - automatically connect to the specified URL.
     if (config.standaloneUsername && config.standalonePassword) {
+      if (pageFromUrl !== null) {
+        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+      }
       dispatch(
         createConnectionThunk(
           config.standaloneProtocol,
@@ -669,6 +672,9 @@ export const initializeApplicationAsStandaloneThunk =
         )
       );
     } else {
+      if (pageFromUrl !== null) {
+        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+      }
       dispatch(setConnectionModalOpen(true));
     }
     dispatch(handleSharedDashboardsThunk());
