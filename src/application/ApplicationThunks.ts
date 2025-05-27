@@ -40,6 +40,7 @@ import {
   setReportHelpModalOpen,
   setDraft,
   setCustomHeader,
+  setPageToLoadAfterConnecting,
 } from './ApplicationActions';
 import { setLoggingMode, setLoggingDatabase, setLogErrorNotification } from './logging/LoggingActions';
 import { version } from '../modal/AboutModal';
@@ -118,8 +119,12 @@ export const createConnectionThunk =
               )
             );
           }
-          // If we have remembered to load a specific dashboard after connecting to the database, take care of it here.
+          
+          // Store the deeplinked page if it exists before dashboard loading
           const { application } = getState();
+          const deeplinkedPage = application.pageToLoadAfterConnecting;
+          
+          // If we have remembered to load a specific dashboard after connecting to the database, take care of it here.
           if (
             application.dashboardToLoadAfterConnecting &&
             (application.dashboardToLoadAfterConnecting.startsWith('http') ||
@@ -128,11 +133,27 @@ export const createConnectionThunk =
           ) {
             fetch(application.dashboardToLoadAfterConnecting)
               .then((response) => response.text())
-              .then((data) => dispatch(loadDashboardThunk(createUUID(), data)));
+              .then((data) => {
+                dispatch(loadDashboardThunk(createUUID(), data));
+                // Restore deeplinked page after dashboard load
+                if (deeplinkedPage !== null && deeplinkedPage !== undefined) {
+                  // Use setTimeout to ensure dashboard is fully loaded before setting page
+                  setTimeout(() => {
+                    dispatch(setPageNumberThunk(deeplinkedPage));
+                  }, 100);
+                }
+              });
             dispatch(setDashboardToLoadAfterConnecting(null));
           } else if (application.dashboardToLoadAfterConnecting) {
             const setDashboardAfterLoadingFromDatabase = (value) => {
               dispatch(loadDashboardThunk(createUUID(), value));
+              // Restore deeplinked page after dashboard load
+              if (deeplinkedPage !== null && deeplinkedPage !== undefined) {
+                // Use setTimeout to ensure dashboard is fully loaded before setting page
+                setTimeout(() => {
+                  dispatch(setPageNumberThunk(deeplinkedPage));
+                }, 100);
+              }
             };
 
             // If we specify a dashboard by name, load the latest version of it.
@@ -157,13 +178,16 @@ export const createConnectionThunk =
               );
             }
             dispatch(setDashboardToLoadAfterConnecting(null));
+          } else {
+            // No dashboard to load, but check if there's a page to set
+            if (deeplinkedPage !== null && deeplinkedPage !== undefined) {
+              dispatch(setPageNumberThunk(deeplinkedPage));
+            }
           }
-
-          // After dashboard loading, check if there's a page number to load
-          const { application: appStateAfterDashboardLoad } = getState();
-          if (appStateAfterDashboardLoad.pageToLoadAfterConnecting !== null) {
-            dispatch(setPageNumberThunk(appStateAfterDashboardLoad.pageToLoadAfterConnecting));
-            dispatch(setPageToLoadAfterConnecting(null)); // Reset it after applying
+          
+          // Clear the pageToLoadAfterConnecting to avoid re-applying it
+          if (deeplinkedPage !== null && deeplinkedPage !== undefined) {
+            dispatch(setPageToLoadAfterConnecting(null));
           }
         } else {
           dispatch(createNotificationThunk('Unknown Connection Error', 'Check the browser console.'));
@@ -384,7 +408,7 @@ export const onConfirmLoadSharedDashboardThunk = () => (dispatch: any, getState:
  * Note: this does not work in Neo4j Desktop, so we revert to defaults.
  */
 export const loadApplicationConfigThunk = () => async (dispatch: any, getState: any) => {
-  let pageFromUrl = null;
+  let pageFromUrl: number | null = null;
   let config = {
     ssoEnabled: false,
     ssoProviders: [],
@@ -406,6 +430,8 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     standaloneDatabaseList: 'neo4j',
     customHeader: '',
   };
+  
+  // Separate config loading from URL parameter parsing
   try {
     config = await (await fetch('config.json')).json();
   } catch (e) {
@@ -419,26 +445,32 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     const state = getState();
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
+    
     if (state.application.waitForSSO) {
       const paramsBeforeSSO = JSON.parse(sessionStorage.getItem('SSO_PARAMS_BEFORE_REDIRECT') || '{}');
       Object.entries(paramsBeforeSSO).forEach(([key, value]) => {
         urlParams.set(key, value);
       });
     }
+    
     const paramsToSetAfterConnecting = {};
     Array.from(urlParams.entries()).forEach(([key, value]) => {
       if (key.startsWith('neodash_')) {
         paramsToSetAfterConnecting[key] = value;
       }
     });
-    sessionStorage.getItem('SSO_PARAMS_BEFORE_REDIRECT');
+    
+    // Parse page parameter - ensure it's properly extracted and stored
     const pageParam = urlParams.get('page');
-    if (pageParam !== '' && pageParam !== null) {
-      if (!isNaN(pageParam)) {
-        pageFromUrl = parseInt(pageParam);
-        // dispatch(setPageToLoadAfterConnecting(pageFromUrl)); // Ensure this is NOT active
+    if (pageParam !== null && pageParam !== '') {
+      const parsedPage = parseInt(pageParam);
+      if (!isNaN(parsedPage) && parsedPage >= 0) {
+        pageFromUrl = parsedPage;
+        // Store it in paramsToSetAfterConnecting to ensure persistence
+        paramsToSetAfterConnecting['_deeplinked_page'] = parsedPage;
       }
     }
+    
     dispatch(setSSOEnabled(config.ssoEnabled, state.application.cachedSSODiscoveryUrl));
     dispatch(setSSOProviders(config.ssoProviders));
 
@@ -472,7 +504,6 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
     dispatch(setLogErrorNotification('3'));
 
     dispatch(setConnectionModalOpen(false));
-
     dispatch(setCustomHeader(config.customHeader));
 
     // Auto-upgrade the dashboard version if an old version is cached.
@@ -548,6 +579,10 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
             dispatch(setDashboardToLoadAfterConnecting(`name:${config.standaloneDashboardName}`));
           }
           dispatch(setParametersToLoadAfterConnecting(paramsToSetAfterConnecting));
+          // Ensure page is set after SSO redirect
+          if (pageFromUrl !== null) {
+            dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+          }
         }
         sessionStorage.removeItem('SSO_PARAMS_BEFORE_REDIRECT');
       });
@@ -578,12 +613,13 @@ export const loadApplicationConfigThunk = () => async (dispatch: any, getState: 
       dispatch(initializeApplicationAsEditorThunk(config, paramsToSetAfterConnecting, pageFromUrl));
     }
   } catch (e) {
-    console.log(e);
+    console.error('Error during application initialization:', e);
     dispatch(setWelcomeScreenOpen(false));
+    // More specific error message
     dispatch(
       createNotificationThunk(
-        'Unable to load application configuration',
-        'Do you have a valid config.json deployed with your application?'
+        'Application initialization error',
+        `Failed to initialize application: ${e.message || 'Unknown error'}`
       )
     );
   }
@@ -594,41 +630,52 @@ export const initializeApplicationAsEditorThunk =
   (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any) => {
     const clearNotificationAfterLoad = true;
     dispatch(clearDesktopConnectionProperties());
-  dispatch(setDatabaseFromNeo4jDesktopIntegrationThunk());
-  const old = localStorage.getItem('neodash-dashboard');
-  dispatch(setOldDashboard(old));
-  dispatch(setConnected(false));
-  dispatch(setDashboardToLoadAfterConnecting(null));
-  dispatch(updateGlobalParametersThunk(paramsToSetAfterConnecting));
-  if (pageFromUrl !== null) {
-    dispatch(setPageToLoadAfterConnecting(pageFromUrl));
-  }
-  // TODO: this logic around loading/saving/upgrading/migrating dashboards needs a cleanup
-  if (Object.keys(paramsToSetAfterConnecting).length > 0) {
-    dispatch(setParametersToLoadAfterConnecting(null));
-  }
+    dispatch(setDatabaseFromNeo4jDesktopIntegrationThunk());
+    const old = localStorage.getItem('neodash-dashboard');
+    if (old !== null) {
+      dispatch(setOldDashboard(old));
+    }
+    dispatch(setConnected(false));
+    dispatch(setDashboardToLoadAfterConnecting(null));
+    
+    // Extract deeplinked page if present
+    const deeplinkedPage = paramsToSetAfterConnecting['_deeplinked_page'];
+    if (deeplinkedPage !== undefined) {
+      delete paramsToSetAfterConnecting['_deeplinked_page'];
+      dispatch(setPageToLoadAfterConnecting(deeplinkedPage));
+    } else if (pageFromUrl !== null) {
+      dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+    }
+    
+    dispatch(updateGlobalParametersThunk(paramsToSetAfterConnecting));
+    
+    if (Object.keys(paramsToSetAfterConnecting).length > 0) {
+      dispatch(setParametersToLoadAfterConnecting(null));
+    }
 
-  // Check config to determine which screen is shown by default.
-  if (DEFAULT_SCREEN == Screens.CONNECTION_MODAL) {
-    dispatch(setWelcomeScreenOpen(false));
-    dispatch(setConnectionModalOpen(true));
-  } else if (DEFAULT_SCREEN == Screens.WELCOME_SCREEN) {
-    dispatch(setWelcomeScreenOpen(true));
-  }
+    // Check config to determine which screen is shown by default.
+    const currentScreen: Screens = DEFAULT_SCREEN;
+    if (currentScreen === Screens.CONNECTION_MODAL) {
+      dispatch(setWelcomeScreenOpen(false));
+      dispatch(setConnectionModalOpen(true));
+    } else if (currentScreen === Screens.WELCOME_SCREEN) {
+      dispatch(setWelcomeScreenOpen(true));
+    }
 
-  if (clearNotificationAfterLoad) {
-    dispatch(clearNotification());
-  }
-  dispatch(handleSharedDashboardsThunk());
-  dispatch(setReportHelpModalOpen(false));
-  dispatch(setAboutModalOpen(false));
-};
+    if (clearNotificationAfterLoad) {
+      dispatch(clearNotification());
+    }
+    dispatch(handleSharedDashboardsThunk());
+    dispatch(setReportHelpModalOpen(false));
+    dispatch(setAboutModalOpen(false));
+  };
 
 // Set up NeoDash to run in standalone mode.
 export const initializeApplicationAsStandaloneThunk =
   (config, paramsToSetAfterConnecting, pageFromUrl) => (dispatch: any, getState: any) => {
     const clearNotificationAfterLoad = true;
     const state = getState();
+    
     // If we are running in standalone mode, auto-set the connection details that are configured.
     dispatch(
       setConnectionProperties(
@@ -644,11 +691,22 @@ export const initializeApplicationAsStandaloneThunk =
     dispatch(setAboutModalOpen(false));
     dispatch(setConnected(false));
     dispatch(setWelcomeScreenOpen(false));
+    
     if (config.standaloneDashboardURL !== undefined && config.standaloneDashboardURL.length > 0) {
       dispatch(setDashboardToLoadAfterConnecting(config.standaloneDashboardURL));
     } else {
       dispatch(setDashboardToLoadAfterConnecting(`name:${config.standaloneDashboardName}`));
     }
+    
+    // Extract deeplinked page parameter before updating other parameters
+    const deeplinkedPage = paramsToSetAfterConnecting['_deeplinked_page'];
+    if (deeplinkedPage !== undefined) {
+      delete paramsToSetAfterConnecting['_deeplinked_page'];
+      dispatch(setPageToLoadAfterConnecting(deeplinkedPage));
+    } else if (pageFromUrl !== null) {
+      dispatch(setPageToLoadAfterConnecting(pageFromUrl));
+    }
+    
     dispatch(setParametersToLoadAfterConnecting(paramsToSetAfterConnecting));
     dispatch(updateGlobalParametersThunk(paramsToSetAfterConnecting));
 
@@ -658,9 +716,6 @@ export const initializeApplicationAsStandaloneThunk =
 
     // Override for when username and password are specified in the config - automatically connect to the specified URL.
     if (config.standaloneUsername && config.standalonePassword) {
-      if (pageFromUrl !== null) {
-        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
-      }
       dispatch(
         createConnectionThunk(
           config.standaloneProtocol,
@@ -672,9 +727,6 @@ export const initializeApplicationAsStandaloneThunk =
         )
       );
     } else {
-      if (pageFromUrl !== null) {
-        dispatch(setPageToLoadAfterConnecting(pageFromUrl));
-      }
       dispatch(setConnectionModalOpen(true));
     }
     dispatch(handleSharedDashboardsThunk());
